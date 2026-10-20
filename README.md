@@ -2,6 +2,8 @@
 
 适配红果短剧 `com.phoenix.read` 7.3.9.32 的 LSPosed 模块，使用官方 LSPosed 1.9.2 兼容的 legacy XposedBridge API。当前模块版本为 **1.8.7**。
 
+本模块在 Codex 中使用 **GPT-6 Sol（极高思考程度）**辅助开发。
+
 ## 展示视频
 
 <a href="media/HongguoCache1080-v1.8.7-showcase.mp4"><img src="media/showcase-cover.png" width="240" alt="点击观看功能展示视频"></a>
@@ -61,11 +63,11 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 
 输出位于 `android-app/app/build/outputs/apk/debug/`。模块入口为 `assets/xposed_init`，Xposed API 以 `compileOnly` 方式依赖 `de.robv.android.xposed:api:82`。
 
-仓库只包含模块源码和构建配置，不包含红果短剧 APK、免 Root 整合包、签名私钥或用户数据。此项目与红果短剧官方无关。
+主分支只包含模块源码和构建配置，不包含红果短剧 APK、免 Root 整合包、签名私钥或用户数据。此项目与红果短剧官方无关。
 
 ## 版本与更新记录
 
-当前源码对应 **v1.8.7**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 与 [25 个历史模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/module-apk-history) 分别放在 GitHub Releases；旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
+当前源码对应 **v1.8.7**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 与[历史版本列表](https://github.com/T8numen/HongguoCache1080/releases)分别放在各版本的 GitHub Release，每版有独立更新说明和 APK。旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
 
 | 版本 | 主要变更 |
 | --- | --- |
@@ -95,3 +97,7 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 | 1.0.0 | 初始版：把下载任务从 720P 调整到 1080P。 |
 
 历史版本用于回溯，不建议直接覆盖新版。设置键和适配行为随版本变化；安装前请核对目标红果版本及 LSPosed 作用域。
+
+## 使用许可
+
+本项目作者提供的模块源码与模块 APK 采用 [PolyForm Noncommercial License 1.0.0](LICENSE)：可用于个人研究、学习、实验和其他许可中的非商业用途，不允许未经另行授权的商业用途。该协议不授予红果短剧原版应用、第三方代码或资源的权利；第三方组件仍适用各自的许可。限制商业用途的协议不符合 OSI 对开放源码许可的定义，因此本仓库是**源码可见、非商业使用**项目。
