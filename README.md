@@ -2,6 +2,12 @@
 
 适配红果短剧 `com.phoenix.read` 7.3.9.32 的 LSPosed 模块，使用官方 LSPosed 1.9.2 兼容的 legacy XposedBridge API。当前模块版本为 **1.8.7**。
 
+## 展示视频
+
+<a href="media/HongguoCache1080-v1.8.7-showcase.mp4"><img src="media/showcase-cover.png" width="240" alt="点击观看功能展示视频"></a>
+
+[观看约 50 秒的功能展示视频](media/HongguoCache1080-v1.8.7-showcase.mp4)。录屏拍摄于 Root 测试机：独立模块设置页为 v1.8.7，红果播放页当时运行的免 Root Integrated 包内嵌 v1.8.6 模块。画面展示设置和可见 UI，不作为独立 Root Hook 的隔离验收结果。
+
 ## 主要功能
 
 - 在线播放及离线下载任务默认选择 1080P；播放时仍可手动切换画质。
