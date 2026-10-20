@@ -1,0 +1,17 @@
+**/.gradle/
+**/.gradle-local/
+**/build/
+**/local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+*.password.dpapi
+*.log
+*.hprof
+*.idsig
+archive/
+account-backups/
+reports/
+signing/
+work/

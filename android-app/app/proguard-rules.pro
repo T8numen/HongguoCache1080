@@ -1,0 +1,1 @@
+-keep class com.t8numen.hongguocache1080.HookEntry { *; }

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">红果增强模块</string>
+    <string name="xposed_description">首页空数据时更新 DID/IID、可选启动页面、本地收藏、默认最高画质、按剧跳过片头片尾、播放防烧屏、底栏精简、评论防重播，并关闭二改版更新弹窗。</string>
+    <string name="settings_title">启动行为</string>
+    <string name="settings_intro">设置将在下次完全关闭并重新打开红果后生效。</string>
+    <string name="startup_primary_title">一级：启动页面</string>
+    <string name="startup_primary_summary">选择不跳转、我的或剧场。</string>
+    <string-array name="startup_primary_options">
+        <item>不跳转</item>
+        <item>我的</item>
+        <item>剧场</item>
+    </string-array>
+    <string name="startup_secondary_title">二级：我的页面</string>
+    <string name="startup_secondary_summary">一级选择“我的”后，可进入收藏、点赞或历史。</string>
+    <string-array name="startup_secondary_options">
+        <item>仅我的</item>
+        <item>收藏</item>
+        <item>点赞</item>
+        <item>历史</item>
+    </string-array>
+    <string name="block_home_video_title">阻止首页首视频加载</string>
+    <string name="block_home_video_summary">一级选择“我的”时跳过首页 Fragment，避免首视频写入历史。</string>
+    <string name="local_favorites_title">未登录时使用本地收藏</string>
+    <string name="local_favorites_summary">默认关闭；关闭时保留红果原生收藏，已有本地记录不会删除。</string>
+    <string name="home_recovery_title">首页恢复</string>
+    <string name="home_id_rotation_title">空数据时更新 DID/IID</string>
+    <string name="home_id_rotation_summary">首页数据为空时生成新请求 ID 并提示；点击重试后使用新 ID，不清除历史或收藏。</string>
+    <string name="quality_settings_title">画质</string>
+    <string name="online_highest_title">在线播放默认最高画质</string>
+    <string name="online_highest_summary">短剧播放器启动时默认选择 1080P；仍可在清晰度面板手动改低。</string>
+    <string name="download_highest_title">下载默认最高画质</string>
+    <string name="download_highest_summary">将官方下载任务从 720P 切换为可用的 1080P。</string>
+    <string name="content_badge_settings_title">内容标识</string>
+    <string name="vip_exclusive_badge_title">统一显示“VIP专享”</string>
+    <string name="vip_exclusive_badge_summary">将卡片角标统一为“VIP专享”，进入VIP剧时提示一次；同剧换集不重复，限免角标保持不变。</string>
+    <string name="bottom_tab_settings_title">底栏精简</string>
+    <string name="hide_theater_tab_title">隐藏“剧场”</string>
+    <string name="hide_mall_tab_title">隐藏“商城”</string>
+    <string name="hide_earn_tab_title">隐藏“赚钱”</string>
+    <string name="hide_bottom_tab_summary">隐藏对应底栏入口；三个选项可独立组合。</string>
+    <string name="settings_note">模块自带短剧切集广告拦截，无需额外开启；二改版强制更新弹窗拦截保持启用。</string>
+</resources>
