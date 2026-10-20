@@ -47,7 +47,7 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 
 ## 安装
 
-1. 从 [Releases](https://github.com/T8numen/HongguoCache1080/releases) 下载独立模块 APK，并安装红果短剧 7.3.9.32。
+1. 从 [v1.8.7 Release](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 下载独立模块 APK，并安装红果短剧 7.3.9.32。
 2. 在 LSPosed Manager 中启用模块，作用域只选择 `com.phoenix.read`。
 3. 完全关闭并重新打开红果。桌面上的「红果增强模块」可调整启动页面、本地收藏等设置；在播放页长按「分享」可打开播放设置。
 
@@ -65,7 +65,7 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 
 ## 版本与更新记录
 
-当前源码对应 **v1.8.7**。各版本的独立 LSPosed 模块 APK 在 GitHub Releases 中提供；旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
+当前源码对应 **v1.8.7**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 与 [25 个历史模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/module-apk-history) 分别放在 GitHub Releases；旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
 
 | 版本 | 主要变更 |
 | --- | --- |
