@@ -67,34 +67,37 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 
 ## 版本与更新记录
 
-当前源码对应 **v1.8.7**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 与[历史版本列表](https://github.com/T8numen/HongguoCache1080/releases)分别放在各版本的 GitHub Release，每版有独立更新说明和 APK。旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
+当前源码对应 **v1.8.7**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 与[历史版本列表](https://github.com/T8numen/HongguoCache1080/releases)分别放在各版本的 GitHub Release。每版有独立更新说明；v1.3.1 未保留 APK，其他历史版本各有一个 APK。旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
 
 | 版本 | 主要变更 |
 | --- | --- |
-| 1.8.7 | 启动位置改为两级选择，可进入我的、剧场以及收藏、点赞、历史；本地收藏增加默认关闭的开关。 |
-| 1.8.6 | 首页主响应为空时可更新请求用 DID/IID；该功能默认开启，启动直达默认关闭。 |
-| 1.8.5 | 增加横版短剧 OneStop 广告页插入拦截，并在设置页说明广告拦截。 |
-| 1.8.4 | 补齐全屏播放器的评论区完播回调拦截。 |
-| 1.8.3 | 片头片尾跳过提示改为透明背景文字；增加竖屏短剧 OneStop 广告页插入拦截。 |
-| 1.8.2 | 本地收藏的剧名可从当前剧详情补取。 |
-| 1.8.1 | 修复未登录收藏入口跳登录、评论区同集重播和进度条标记位置。 |
-| 1.8.0 | 首次加入未登录时的本地收藏与「我的→收藏」列表；此版部分入口仍存在已知问题。 |
-| 1.7.1 | 清屏增强改为配合红果原生清屏使用；修复设置读取的临时失败兜底。 |
-| 1.7.0 | 片头片尾改为 0.1 秒精度，增加跳过提示和进度条位置标记。 |
-| 1.6.0 | 长按分享打开播放设置，加入按剧片头片尾跳过、音量和亮度调节。 |
-| 1.5.6 | 拦截特定二改版延迟显示的不安全 Toast。 |
-| 1.5.5 | 清理诊断 Hook；此版仍可能显示延迟不安全 Toast。 |
-| 1.5.2–1.5.4 | 历史诊断构建，用于签名和错误码排查，不建议日常使用。 |
-| 1.5.1 | 内嵌设置入口提示改为每次创建主界面显示一次。 |
-| 1.5.0 | 增加免 Root Integrated 运行时识别及应用内设置入口。 |
-| 1.4.1 | 增加 VIP 专享角标和进入 VIP 剧的类型提示。 |
-| 1.3.2 | 修复冷启动时首页预创建的拦截时机。 |
-| 1.3.0–1.3.1 | 增加在线播放默认最高画质，并修复桌面冷启动路由判断。 |
-| 1.2.0 | 增加启动直达「我的→收藏」、阻止首页首视频加载和模块设置页。 |
-| 1.1.0 | 增加特定二改版强制更新弹窗拦截。 |
-| 1.0.2 | 修复 1080P 下载任务分辨率的持久化与回读。 |
-| 1.0.1 | 下载分辨率首次替换时显示一次提示。 |
-| 1.0.0 | 初始版：把下载任务从 720P 调整到 1080P。 |
+| [1.8.7](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) | 启动位置改为两级选择，可进入我的、剧场以及收藏、点赞、历史；本地收藏增加默认关闭的开关。 |
+| [1.8.6](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.6) | 首页主响应为空时可更新请求用 DID/IID；该功能默认开启，启动直达默认关闭。 |
+| [1.8.5](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.5) | 增加横版短剧 OneStop 广告页插入拦截，并在设置页说明广告拦截。 |
+| [1.8.4](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.4) | 补齐全屏播放器的评论区完播回调拦截。 |
+| [1.8.3](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.3) | 片头片尾跳过提示改为透明背景文字；增加竖屏短剧 OneStop 广告页插入拦截。 |
+| [1.8.2](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.2) | 本地收藏的剧名可从当前剧详情补取。 |
+| [1.8.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.1) | 修复未登录收藏入口跳登录、评论区同集重播和进度条标记位置。 |
+| [1.8.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.0) | 首次加入未登录时的本地收藏与「我的→收藏」列表；此版部分入口仍存在已知问题。 |
+| [1.7.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.7.1) | 清屏增强改为配合红果原生清屏使用；修复设置读取的临时失败兜底。 |
+| [1.7.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.7.0) | 片头片尾改为 0.1 秒精度，增加跳过提示和进度条位置标记。 |
+| [1.6.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.6.0) | 长按分享打开播放设置，加入按剧片头片尾跳过、音量和亮度调节。 |
+| [1.5.6](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.6) | 拦截特定二改版延迟显示的不安全 Toast。 |
+| [1.5.5](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.5) | 清理诊断 Hook；此版仍可能显示延迟不安全 Toast。 |
+| [1.5.4](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.4) | 历史 Toast View、错误码和签名诊断构建，不建议日常使用。 |
+| [1.5.3](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.3) | 历史 Toast 堆栈诊断构建，不建议日常使用。 |
+| [1.5.2](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.2) | 历史签名与错误码诊断候选，不建议日常使用。 |
+| [1.5.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.1) | 内嵌设置入口提示改为每次创建主界面显示一次。 |
+| [1.5.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.5.0) | 增加免 Root Integrated 运行时识别及应用内设置入口。 |
+| [1.4.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.4.1) | 增加 VIP 专享角标和进入 VIP 剧的类型提示。 |
+| [1.3.2](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.3.2) | 修复冷启动时首页预创建的拦截时机。 |
+| [1.3.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.3.1) | 修复桌面冷启动路由判断；此版本没有保留 APK。 |
+| [1.3.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.3.0) | 增加在线播放默认最高画质。 |
+| [1.2.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.2.0) | 增加启动直达「我的→收藏」、阻止首页首视频加载和模块设置页。 |
+| [1.1.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.1.0) | 增加特定二改版强制更新弹窗拦截。 |
+| [1.0.2](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.0.2) | 修复 1080P 下载任务分辨率的持久化与回读。 |
+| [1.0.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.0.1) | 下载分辨率首次替换时显示一次提示。 |
+| [1.0.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.0.0) | 初始版：把下载任务从 720P 调整到 1080P。 |
 
 历史版本用于回溯，不建议直接覆盖新版。设置键和适配行为随版本变化；安装前请核对目标红果版本及 LSPosed 作用域。
 
