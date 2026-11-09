@@ -14,15 +14,46 @@ public final class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+        String host = TargetApp.selected(this);
+        getIntent().putExtra(TargetApp.EXTRA, host);
+        setTitle(TargetApp.label(host) + "增强设置");
+        LinearLayout content = findViewById(R.id.settings_content);
+        Spinner hostChoice = new Spinner(this);
+        ArrayAdapter<String> hosts = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, new String[]{"红果短剧", "红果漫剧"});
+        hosts.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        hostChoice.setAdapter(hosts);
+        hostChoice.setContentDescription("选择要设置的应用");
+        hostChoice.setMinimumHeight(Math.round(48 * getResources().getDisplayMetrics().density));
+        hostChoice.setSelection(TargetApp.MANJU.equals(host) ? 1 : 0);
+        content.addView(hostChoice, 0);
+        hostChoice.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, android.view.View view,
+                    int position, long id) {
+                String selected = position == 1 ? TargetApp.MANJU : TargetApp.SHORT;
+                if (!host.equals(selected)) {
+                    getSharedPreferences("module_ui", MODE_PRIVATE).edit()
+                            .putString("selected_host", selected).apply();
+                    getIntent().putExtra(TargetApp.EXTRA, selected);
+                    recreate();
+                }
+            }
 
-        SharedPreferences preferences = getSharedPreferences(
-                SettingsContract.PREFERENCES_NAME,
-                MODE_PRIVATE);
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        AdDiagnosticUi.addRootShortcut(this, findViewById(R.id.settings_content));
+
+        SharedPreferences preferences = TargetApp.preferences(this, host);
         LinearLayout startupPrimaryRow = findViewById(R.id.startup_primary_row);
         LinearLayout startupSecondaryRow = findViewById(R.id.startup_secondary_row);
         LinearLayout blockRow = findViewById(R.id.block_home_video_row);
         LinearLayout localFavoritesRow = findViewById(R.id.local_favorites_row);
         LinearLayout homeIdRotationRow = findViewById(R.id.home_id_rotation_row);
+        if (TargetApp.MANJU.equals(host)) {
+            homeIdRotationRow.setVisibility(android.view.View.GONE);
+            findViewById(R.id.home_recovery_heading).setVisibility(android.view.View.GONE);
+        }
         LinearLayout onlineHighestRow = findViewById(R.id.online_highest_row);
         LinearLayout downloadHighestRow = findViewById(R.id.download_highest_row);
         LinearLayout vipExclusiveBadgeRow = findViewById(R.id.vip_exclusive_badge_row);

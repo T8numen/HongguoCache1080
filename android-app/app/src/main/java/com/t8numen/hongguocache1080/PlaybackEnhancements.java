@@ -35,15 +35,16 @@ import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Predicate;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
 
 /** Playback-only settings and controls injected into the target process. */
 final class PlaybackEnhancements {
@@ -114,6 +115,7 @@ final class PlaybackEnhancements {
         if (!INSTALLED.compareAndSet(false, true)) {
             return;
         }
+        AdBlocking.install(classLoader);
         installPlayerHook(classLoader);
         installShareEntryHook(classLoader);
         installCommentHook(classLoader);
@@ -121,14 +123,15 @@ final class PlaybackEnhancements {
         installProgressMarkerHook(classLoader);
         installSeriesAdBlockHook(classLoader);
         installLandscapeSeriesAdBlockHook(classLoader);
+        installGamePageBlockHooks(classLoader);
         installActivityHooks();
     }
 
     private static void installSeriesAdBlockHook(ClassLoader classLoader) {
         try {
-            Class<?> adModelClass = XposedHelpers.findClass(
+            Class<?> adModelClass = HostSymbols.findClass(
                     "com.bytedance.tomato.onestop.base.model.OneStopAdModel", classLoader);
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     "com.dragon.read.ad.onestop.shortseries.cache.ShortSeriesAdOneStopCacheManager",
                     classLoader,
                     "p",
@@ -137,6 +140,7 @@ final class PlaybackEnhancements {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            AdDiagnostics.source("short_series_insert", param.args[1], true);
                             param.setResult(null);
                             XposedBridge.log(LOG_PREFIX + "blocked short-series ad insertion");
                         }
@@ -150,7 +154,7 @@ final class PlaybackEnhancements {
 
     private static void installLandscapeSeriesAdBlockHook(ClassLoader classLoader) {
         try {
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     "com.dragon.read.ad.onestop.serieslandscape.cache.SeriesLandscapeAdOneStopCacheManager",
                     classLoader,
                     "n",
@@ -160,6 +164,7 @@ final class PlaybackEnhancements {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            AdDiagnostics.source("landscape_insert", null, true);
                             param.setResult(null);
                             XposedBridge.log(LOG_PREFIX + "blocked landscape-series ad insertion");
                         }
@@ -171,9 +176,73 @@ final class PlaybackEnhancements {
         }
     }
 
+    private static void installGamePageBlockHooks(ClassLoader classLoader) {
+        try {
+            Class<?> adapter = HostSymbols.findClass(
+                    "com.dragon.read.component.shortvideo.impl.v2.view.adapter.a", classLoader);
+            Class<?> directGame = HostSymbols.findClass("wr3.f", classLoader);
+            Class<?> miniGame = HostSymbols.findClass(
+                    "com.dragon.read.feed.bookmall.subtab.model.VideoTabSingleMiniGameModel",
+                    classLoader);
+            Predicate<Object> gamePage = page -> directGame.isInstance(page)
+                    || miniGame.isInstance(page) || AdBlocking.blockPage(page);
+            AtomicBoolean insertionLogged = new AtomicBoolean(false);
+            AtomicBoolean listLogged = new AtomicBoolean(false);
+            HostSymbols.findAndHookMethod(adapter, "J4", int.class, Object.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            AdDiagnostics.sourceList("single_insert", Collections.singletonList(param.args[1]));
+                            if (gamePage.test(param.args[1])) {
+                                AdDiagnostics.source("promotion_insert_blocked", param.args[1], true);
+                                param.setResult(false);
+                                if (insertionLogged.compareAndSet(false, true)) {
+                                    XposedBridge.log(LOG_PREFIX + "blocked promotion insertion");
+                                }
+                            }
+                        }
+                    });
+            XC_MethodHook listHook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    int listArgument = param.args[0] instanceof List ? 0 : 1;
+                    List<?> original = (List<?>) param.args[listArgument];
+                    AdDiagnostics.sourceList("list_" + param.method.getName(), original);
+                    List<?> filtered = PlaybackPageFilter.filter(original, gamePage);
+                    if (filtered == original) {
+                        return;
+                    }
+                    if (filtered.isEmpty()) {
+                        // A promotion-only update must not clear the normal pages already playing.
+                        param.setResult(null);
+                    } else {
+                        param.args[listArgument] = filtered;
+                    }
+                    if (!filtered.isEmpty() && param.args.length == 3) {
+                        int index = (Integer) param.args[0];
+                        if (index >= 0) {
+                            param.args[0] = PlaybackPageFilter.remapIndex(
+                                    original, gamePage, index, filtered.size());
+                        }
+                    }
+                    if (listLogged.compareAndSet(false, true)) {
+                        XposedBridge.log(LOG_PREFIX + "removed promotion pages from playback list");
+                    }
+                }
+            };
+            HostSymbols.findAndHookMethod(adapter, "U0", List.class, listHook);
+            HostSymbols.findAndHookMethod(adapter, "x0", int.class, List.class, listHook);
+            HostSymbols.findAndHookMethod(adapter, "l2", int.class, List.class, boolean.class, listHook);
+            XposedBridge.log(LOG_PREFIX + "game promotion page hooks installed");
+        } catch (Throwable error) {
+            XposedBridge.log(LOG_PREFIX + "game promotion page hooks unavailable");
+            XposedBridge.log(error);
+        }
+    }
+
     private static void installProgressMarkerHook(ClassLoader classLoader) {
         try {
-            Class<?> seekBarClass = XposedHelpers.findClass(
+            Class<?> seekBarClass = HostSymbols.findClass(
                     "com.dragon.read.component.seriessdk.ui.progressbarlayer.SeriesProhibitVerticalScrollSeekBar",
                     classLoader);
             XposedBridge.hookAllConstructors(
@@ -200,8 +269,8 @@ final class PlaybackEnhancements {
 
     private static void installPlayerHook(ClassLoader classLoader) {
         try {
-            Class<?> playbackHostClass = XposedHelpers.findClass("ba5.a", classLoader);
-            XposedBridge.hookAllMethods(
+            Class<?> playbackHostClass = HostSymbols.findClass("ba5.a", classLoader);
+            HostSymbols.hookAllMethods(
                     playbackHostClass,
                     "a",
                     new XC_MethodHook() {
@@ -221,7 +290,7 @@ final class PlaybackEnhancements {
 
     private static void installShareEntryHook(ClassLoader classLoader) {
         try {
-            Class<?> shareViewClass = XposedHelpers.findClass(
+            Class<?> shareViewClass = HostSymbols.findClass(
                     "com.dragon.read.component.shortvideo.impl.rightview.c",
                     classLoader);
             XposedBridge.hookAllConstructors(
@@ -247,10 +316,10 @@ final class PlaybackEnhancements {
 
     private static void installCommentHook(ClassLoader classLoader) {
         try {
-            Class<?> commentViewClass = XposedHelpers.findClass(
+            Class<?> commentViewClass = HostSymbols.findClass(
                     "com.dragon.read.component.shortvideo.impl.rightview.b",
                     classLoader);
-            XposedBridge.hookAllMethods(
+            HostSymbols.hookAllMethods(
                     commentViewClass,
                     "h",
                     new XC_MethodHook() {
@@ -271,10 +340,10 @@ final class PlaybackEnhancements {
             XposedBridge.log(error);
         }
         try {
-            Class<?> helperClass = XposedHelpers.findClass(
+            Class<?> helperClass = HostSymbols.findClass(
                     "com.dragon.read.component.shortvideo.impl.rightview.comment.CommentDialogHelper",
                     classLoader);
-            XposedHelpers.findAndHookMethod(helperClass, "onDialogShow", String.class,
+            HostSymbols.findAndHookMethod(helperClass, "onDialogShow", String.class,
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
@@ -290,8 +359,8 @@ final class PlaybackEnhancements {
                     }
                 }
             };
-            XposedHelpers.findAndHookMethod(helperClass, "hideCommentDialog", closeHook);
-            XposedHelpers.findAndHookMethod(helperClass, "releaseCurDialog", boolean.class,
+            HostSymbols.findAndHookMethod(helperClass, "hideCommentDialog", closeHook);
+            HostSymbols.findAndHookMethod(helperClass, "releaseCurDialog", boolean.class,
                     closeHook);
             XposedBridge.log(LOG_PREFIX + "comment dialog lifecycle hooks installed");
         } catch (Throwable error) {
@@ -308,8 +377,8 @@ final class PlaybackEnhancements {
         };
         for (String adapterClassName : adapterClasses) {
             try {
-                Class<?> adapterClass = XposedHelpers.findClass(adapterClassName, classLoader);
-                XposedHelpers.findAndHookMethod(adapterClass, "Z1", String.class,
+                Class<?> adapterClass = HostSymbols.findClass(adapterClassName, classLoader);
+                HostSymbols.findAndHookMethod(adapterClass, "Z1", String.class,
                         new XC_MethodHook() {
                             @Override
                             protected void beforeHookedMethod(MethodHookParam param) {
@@ -343,7 +412,7 @@ final class PlaybackEnhancements {
 
     private static void installActivityHooks() {
         try {
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Activity.class,
                     "onResume",
                     new XC_MethodHook() {
@@ -352,7 +421,7 @@ final class PlaybackEnhancements {
                             onActivityResumed((Activity) param.thisObject);
                         }
                     });
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Activity.class,
                     "onPause",
                     new XC_MethodHook() {
@@ -369,7 +438,7 @@ final class PlaybackEnhancements {
                             }
                         }
                     });
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Activity.class,
                     "onDestroy",
                     new XC_MethodHook() {
@@ -382,7 +451,7 @@ final class PlaybackEnhancements {
                             ORIGINAL_BRIGHTNESS.remove(activity);
                         }
                     });
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Activity.class,
                     "onBackPressed",
                     new XC_MethodHook() {
@@ -400,16 +469,17 @@ final class PlaybackEnhancements {
 
     private static void capturePlayer(Object playbackHost) {
         try {
-            Object adapter = XposedHelpers.getObjectField(playbackHost, "a");
-            Object controller = XposedHelpers.callMethod(adapter, "n");
+            Object adapter = HostSymbols.getObjectField(playbackHost, "a");
+            Object controller = HostSymbols.callMethod(adapter, "n");
             if (adapter == null || controller == null) {
                 return;
             }
             hostAdapter = new WeakReference<>(adapter);
+            AdDiagnostics.observeAdapter(adapter, controller);
             playerController = new WeakReference<>(controller);
             Context context = null;
             try {
-                Object candidate = XposedHelpers.callMethod(controller, "P1");
+                Object candidate = HostSymbols.callMethod(controller, "P1");
                 if (candidate instanceof Context) {
                     context = (Context) candidate;
                 }
@@ -573,6 +643,7 @@ final class PlaybackEnhancements {
                 "打开评论区时禁止重播当集",
                 preferences.getBoolean(KEY_PREVENT_COMMENT_REPLAY, false));
         addCaption(content, "评论打开时在当集播完后暂停，避免自动重播；关闭评论后可手动继续播放。");
+        AdDiagnosticUi.addButtons(activity, content);
 
         AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setTitle("播放设置")
@@ -659,7 +730,7 @@ final class PlaybackEnhancements {
             try {
                 refreshPlaybackSnapshot();
                 resetSkipStateIfVideoChanged();
-                Number positionValue = (Number) XposedHelpers.callMethod(controller, "V");
+                Number positionValue = (Number) HostSymbols.callMethod(controller, "V");
                 long positionMs = Math.max(0L, positionValue.longValue());
                 long previousPositionMs = lastPositionMs;
                 SharedPreferences preferences = preferencesOrNull();
@@ -725,7 +796,7 @@ final class PlaybackEnhancements {
             pauseCurrentPlayer(controller);
             int nearEnd = (int) Math.min(Integer.MAX_VALUE,
                     Math.max(0L, currentDurationMs - 150L));
-            XposedHelpers.callMethod(controller, "seekTo", nearEnd, null);
+            HostSymbols.callMethod(controller, "seekTo", nearEnd, null);
             pauseCurrentPlayer(controller);
             XposedBridge.log(LOG_PREFIX + "comment replay fallback stopped for vid="
                     + currentVideoId);
@@ -752,7 +823,7 @@ final class PlaybackEnhancements {
         if (helper != null) {
             try {
                 if (!Boolean.TRUE.equals(
-                        XposedHelpers.callMethod(helper, "isCommentDialogShowing"))) {
+                        HostSymbols.callMethod(helper, "isCommentDialogShowing"))) {
                     clearCommentGuard();
                     return false;
                 }
@@ -764,9 +835,9 @@ final class PlaybackEnhancements {
     }
 
     private static void pauseCurrentPlayer(Object controller) {
-        Object handler = XposedHelpers.callMethod(controller, "x3");
-        Object activePlayer = XposedHelpers.getObjectField(handler, "f");
-        XposedHelpers.callMethod(activePlayer, "pause");
+        Object handler = HostSymbols.callMethod(controller, "x3");
+        Object activePlayer = HostSymbols.getObjectField(handler, "f");
+        HostSymbols.callMethod(activePlayer, "pause");
     }
 
     private static void applyIntroSkip(
@@ -824,7 +895,7 @@ final class PlaybackEnhancements {
 
     private static void seek(Object controller, long positionMs) {
         int safePosition = (int) Math.min(Integer.MAX_VALUE, Math.max(0L, positionMs));
-        XposedHelpers.callMethod(controller, "N1", safePosition);
+        HostSymbols.callMethod(controller, "N1", safePosition);
     }
 
     private static void showSkipToast(int tenths, String part) {
@@ -970,15 +1041,15 @@ final class PlaybackEnhancements {
         if (adapter == null) {
             return;
         }
-        Object controller = XposedHelpers.callMethod(adapter, "n");
+        Object controller = HostSymbols.callMethod(adapter, "n");
         if (controller != null) {
             playerController = new WeakReference<>(controller);
         }
-        Object dataApi = XposedHelpers.callMethod(adapter, "a");
+        Object dataApi = HostSymbols.callMethod(adapter, "a");
         if (dataApi == null) {
             return;
         }
-        Object data = XposedHelpers.callMethod(dataApi, "q0");
+        Object data = HostSymbols.callMethod(dataApi, "q0");
         if (data == null) {
             return;
         }
@@ -1002,8 +1073,24 @@ final class PlaybackEnhancements {
             return null;
         }
         try {
-            Object dataApi = XposedHelpers.callMethod(adapter, "a");
-            Object data = dataApi == null ? null : XposedHelpers.callMethod(dataApi, "q0");
+            Object dataApi = HostSymbols.callMethod(adapter, "a");
+            Object data = dataApi == null ? null : HostSymbols.callMethod(dataApi, "q0");
+            Object detail = null;
+            try {
+                detail = dataApi == null ? null : HostSymbols.callMethod(dataApi, "r0");
+            } catch (Throwable ignored) {
+                // Ordinary series can still be collected before its detail model is ready.
+            }
+            if (detail != null && "com.dragon.read.component.shortvideo.data.ugc.AlbumDetailModel"
+                    .equals(detail.getClass().getName())) {
+                String albumId = (String) HostSymbols.callMethod(detail, "c");
+                if (albumId != null && !albumId.isEmpty()) {
+                    String title = (String) HostSymbols.callMethod(detail, "b");
+                    String videoId = data == null ? "" : readStringField(data, "vid");
+                    return new String[]{LocalFavorites.ALBUM_PREFIX + albumId,
+                            title == null ? "" : title.trim(), videoId};
+                }
+            }
             String seriesId = data == null ? "" : readStringField(data, "seriesId");
             if (seriesId.isEmpty()) {
                 return null;
@@ -1011,9 +1098,8 @@ final class PlaybackEnhancements {
             String title = readStringField(data, "seriesName").trim();
             if (title.isEmpty()) {
                 try {
-                    Object detail = XposedHelpers.callMethod(dataApi, "r0");
-                    if (detail != null && seriesId.equals(XposedHelpers.callMethod(detail, "c"))) {
-                        Object detailTitle = XposedHelpers.callMethod(detail, "b");
+                    if (detail != null && seriesId.equals(HostSymbols.callMethod(detail, "c"))) {
+                        Object detailTitle = HostSymbols.callMethod(detail, "b");
                         title = detailTitle instanceof String ? ((String) detailTitle).trim() : "";
                     }
                 } catch (Throwable ignored) {
@@ -1126,7 +1212,7 @@ final class PlaybackEnhancements {
             return false;
         }
         try {
-            Object value = XposedHelpers.callMethod(controller, "U");
+            Object value = HostSymbols.callMethod(controller, "U");
             return value instanceof Boolean && (Boolean) value;
         } catch (Throwable ignored) {
             return false;
@@ -1152,17 +1238,17 @@ final class PlaybackEnhancements {
             showDimmedCleanScreenToast(activity);
         }
         View decor = activity.getWindow().getDecorView();
-        int topBarId = decor.getResources().getIdentifier("ixy", "id", "com.phoenix.read");
-        int bottomBarId = decor.getResources().getIdentifier("hh", "id", "com.phoenix.read");
+        int topBarId = decor.getResources().getIdentifier(HostSymbols.resource("ixy"), "id", TargetApp.current());
+        int bottomBarId = decor.getResources().getIdentifier(HostSymbols.resource("hh"), "id", TargetApp.current());
         dimViewsByClass(decor, topBarId, bottomBarId);
     }
 
     private static void dimViewsByClass(View view, int topBarId, int bottomBarId) {
         String className = view.getClass().getName();
         boolean target = className.equals(
-                "com.dragon.read.component.shortvideo.impl.catalogview.c")
+                HostSymbols.className("com.dragon.read.component.shortvideo.impl.catalogview.c"))
                 || className.equals(
-                        "com.dragon.read.component.shortvideo.impl.catalogview.a")
+                        HostSymbols.className("com.dragon.read.component.shortvideo.impl.catalogview.a"))
                 || className.contains("CleanScreenQuickActionBarView")
                 || className.endsWith("SeriesProhibitVerticalScrollSeekBar")
                 || (topBarId != 0 && view.getId() == topBarId)
@@ -1252,7 +1338,7 @@ final class PlaybackEnhancements {
 
     private static String readStringField(Object instance, String fieldName) {
         try {
-            Object value = XposedHelpers.getObjectField(instance, fieldName);
+            Object value = HostSymbols.getObjectField(instance, fieldName);
             return value == null ? "" : String.valueOf(value);
         } catch (Throwable ignored) {
             return "";
@@ -1261,7 +1347,7 @@ final class PlaybackEnhancements {
 
     private static long readLongField(Object instance, String fieldName) {
         try {
-            return XposedHelpers.getLongField(instance, fieldName);
+            return HostSymbols.getLongField(instance, fieldName);
         } catch (Throwable ignored) {
             return 0L;
         }

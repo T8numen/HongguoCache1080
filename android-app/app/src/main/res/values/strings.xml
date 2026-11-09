@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">红果增强模块</string>
-    <string name="xposed_description">首页空数据时更新 DID/IID、可选启动页面、本地收藏、默认最高画质、按剧跳过片头片尾、播放防烧屏、底栏精简、评论防重播，并关闭二改版更新弹窗。</string>
+    <string name="xposed_description">支持红果短剧与红果漫剧的独立设置、默认最高画质、本地收藏、片头片尾、评论防重播、清屏增强及广告诊断；首页身份恢复仅用于短剧。</string>
     <string name="settings_title">启动行为</string>
     <string name="settings_intro">设置将在下次完全关闭并重新打开红果后生效。</string>
     <string name="startup_primary_title">一级：启动页面</string>
@@ -28,7 +28,7 @@
     <string name="home_id_rotation_summary">首页数据为空时生成新请求 ID 并提示；点击重试后使用新 ID，不清除历史或收藏。</string>
     <string name="quality_settings_title">画质</string>
     <string name="online_highest_title">在线播放默认最高画质</string>
-    <string name="online_highest_summary">短剧播放器启动时默认选择 1080P；仍可在清晰度面板手动改低。</string>
+    <string name="online_highest_summary">播放器启动时默认选择 1080P；仍可在清晰度面板手动改低。</string>
     <string name="download_highest_title">下载默认最高画质</string>
     <string name="download_highest_summary">将官方下载任务从 720P 切换为可用的 1080P。</string>
     <string name="content_badge_settings_title">内容标识</string>
@@ -39,5 +39,5 @@
     <string name="hide_mall_tab_title">隐藏“商城”</string>
     <string name="hide_earn_tab_title">隐藏“赚钱”</string>
     <string name="hide_bottom_tab_summary">隐藏对应底栏入口；三个选项可独立组合。</string>
-    <string name="settings_note">模块自带短剧切集广告拦截，无需额外开启；二改版强制更新弹窗拦截保持启用。</string>
+    <string name="settings_note">模块自带短剧切集广告、游戏推广页及强制更新弹窗拦截，并默认阻止跳转登录页（包括主动点击登录）。</string>
 </resources>

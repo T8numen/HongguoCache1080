@@ -9,12 +9,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
@@ -30,6 +34,7 @@ import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -37,11 +42,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class HookEntry implements IXposedHookLoadPackage {
-    private static final String TARGET_PACKAGE = "com.phoenix.read";
+    private static final String MODULE_PACKAGE = "com.t8numen.hongguocache1080";
     private static final String LOG_PREFIX = "[HongguoCache1080] ";
     private static final String LSPATCH_ORIGIN_PATH = "/cache/lspatch/origin/";
     private static final String EMBEDDED_PREFERENCES_NAME =
@@ -50,7 +54,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static final String SETTINGS_SNAPSHOT_NAME = "hongguo_cache_1080_settings_snapshot";
     private static final String UNSAFE_VERSION_TOAST_TEXT =
             "当前版本不安全，请到正规应用市场下载";
+    private static final AtomicBoolean TARGET_HOOKS_INSTALLED = new AtomicBoolean(false);
     private static final AtomicBoolean TOAST_SHOWN = new AtomicBoolean(false);
+    private static final Set<Activity> STARTUP_NAVIGATION_SCHEDULED =
+            Collections.newSetFromMap(new WeakHashMap<Activity, Boolean>());
     private static final AtomicBoolean STARTUP_NAVIGATION_PENDING = new AtomicBoolean(false);
     private static final AtomicBoolean EARLY_REDIRECT_ACTIVE = new AtomicBoolean(false);
     private static final AtomicBoolean ONLINE_QUALITY_LOGGED = new AtomicBoolean(false);
@@ -61,9 +68,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             new AtomicBoolean(false);
     private static final long VIP_TOAST_FALLBACK_INTERVAL_MS = 5L * 60L * 1000L;
     private static final Object VIP_TOAST_LOCK = new Object();
-    private static final Set<View> EMBEDDED_SETTINGS_ENTRY_VIEWS =
-            Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
-    private static final Set<Activity> EMBEDDED_SETTINGS_HINT_ACTIVITIES =
+    private static final Map<Activity, SettingsGesture> SETTINGS_GESTURES = new WeakHashMap<>();
+    private static final Set<Activity> SETTINGS_HINT_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<Activity, Boolean>());
     private static String lastObservedSeriesId;
     private static long lastVipToastElapsedRealtime;
@@ -80,52 +86,105 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) {
-        if (!TARGET_PACKAGE.equals(loadPackageParam.packageName)) {
+        if (!TargetApp.supported(loadPackageParam.packageName)) {
             return;
         }
+        TargetApp.activate(loadPackageParam.packageName);
+        if (!TargetApp.isManju()) {
+            installTargetHooks(loadPackageParam);
+            return;
+        }
+        // Context is available here, so version validation precedes any business hook.
+        HostSymbols.findAndHookMethod(Application.class, "attach", Context.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Context context = (Context) param.args[0];
+                        try {
+                            android.content.pm.PackageInfo info = context.getPackageManager()
+                                    .getPackageInfo(context.getPackageName(), 0);
+                            long code = Build.VERSION.SDK_INT >= 28
+                                    ? info.getLongVersionCode() : info.versionCode;
+                            if (!"7.4.1.32".equals(info.versionName) || code != 74132L) {
+                                XposedBridge.log(LOG_PREFIX + "unsupported Manju version; hooks skipped: "
+                                        + info.versionName);
+                                return;
+                            }
+                            if (!TARGET_HOOKS_INSTALLED.compareAndSet(false, true)) {
+                                return;
+                            }
+                            installTargetHooks(loadPackageParam);
+                            loadModuleSettings(context);
+                            if (loadPackageParam.packageName.equals(loadPackageParam.processName)) {
+                                AdDiagnostics.initialize((Application) param.thisObject);
+                                installManjuLifecycle((Application) param.thisObject);
+                            }
+                        } catch (Throwable error) {
+                            XposedBridge.log(LOG_PREFIX + "Manju initialization failed; native app retained");
+                            XposedBridge.log(error);
+                        }
+                    }
+                });
+    }
 
+    private void installTargetHooks(XC_LoadPackage.LoadPackageParam loadPackageParam) {
         embeddedLspatchEnvironment = isEmbeddedLspatchEnvironment(loadPackageParam);
 
         XposedBridge.log(
                 LOG_PREFIX
                         + "loaded in process "
                         + loadPackageParam.processName
+                        + ", module=" + BuildConfig.VERSION_NAME + "/" + BuildConfig.VERSION_CODE
                         + ", embedded="
                         + embeddedLspatchEnvironment);
 
-        installSettingsHook();
-        if (TARGET_PACKAGE.equals(loadPackageParam.processName)) {
+        if (!TargetApp.isManju()) {
+            installSettingsHook();
+        }
+        if (TargetApp.current().equals(loadPackageParam.processName)) {
+            LoginNavigationBlocker.install(loadPackageParam.classLoader);
+            if (embeddedLspatchEnvironment && Build.VERSION.SDK_INT == 31) {
+                installAndroid12AnrCompatibilityHook(loadPackageParam.classLoader);
+            }
+            try {
+                AdDiagnostics.install(loadPackageParam.classLoader);
+            } catch (Throwable error) {
+                XposedBridge.log(LOG_PREFIX + "advertisement diagnostics unavailable");
+                XposedBridge.log(error);
+            }
             installInjectedUpdateDialogHook();
             installUnsafeVersionToastBlockHook();
             installStartupNavigationHooks(loadPackageParam.classLoader);
             installVipExclusiveBadgeHooks(loadPackageParam.classLoader);
             PlaybackEnhancements.install(loadPackageParam.classLoader);
             LocalFavorites.install(loadPackageParam.classLoader);
-            HomeFeedRecovery.install(loadPackageParam.classLoader);
+            if (!TargetApp.isManju()) {
+                HomeFeedRecovery.install(loadPackageParam.classLoader);
+            }
         }
 
         try {
-            Class<?> resolutionClass = XposedHelpers.findClass(
+            Class<?> resolutionClass = HostSymbols.findClass(
                     "com.ss.ttvideoengine.Resolution",
                     loadPackageParam.classLoader);
-            Class<?> videoModelInfoClass = XposedHelpers.findClass(
+            Class<?> videoModelInfoClass = HostSymbols.findClass(
                     "nr4.s",
                     loadPackageParam.classLoader);
-            Object superHigh = XposedHelpers.getStaticObjectField(
+            Object superHigh = HostSymbols.getStaticObjectField(
                     resolutionClass,
                     "SuperHigh");
-            Object extremelyHigh = XposedHelpers.getStaticObjectField(
+            Object extremelyHigh = HostSymbols.getStaticObjectField(
                     resolutionClass,
                     "ExtremelyHigh");
 
             installResolutionPersistenceHooks(resolutionClass, extremelyHigh);
-            if (TARGET_PACKAGE.equals(loadPackageParam.processName)) {
+            if (TargetApp.current().equals(loadPackageParam.processName)) {
                 installOnlineHighestQualityHooks(
                         loadPackageParam.classLoader,
                         extremelyHigh);
             }
 
-            XposedHelpers.findAndHookConstructor(
+            HostSymbols.findAndHookConstructor(
                     "so4.c",
                     loadPackageParam.classLoader,
                     videoModelInfoClass,
@@ -140,7 +199,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             XposedBridge.log(
                                     LOG_PREFIX
                                             + "download resolution overridden: SuperHigh -> ExtremelyHigh");
-                            if (TARGET_PACKAGE.equals(loadPackageParam.processName)
+                            if (TargetApp.current().equals(loadPackageParam.processName)
                                     && TOAST_SHOWN.compareAndSet(false, true)) {
                                 showOverrideToast();
                             }
@@ -150,6 +209,27 @@ public final class HookEntry implements IXposedHookLoadPackage {
             XposedBridge.log(LOG_PREFIX + "hook installed: so4.c constructor");
         } catch (Throwable error) {
             XposedBridge.log(LOG_PREFIX + "hook installation failed");
+            XposedBridge.log(error);
+        }
+    }
+
+    private static void installAndroid12AnrCompatibilityHook(ClassLoader classLoader) {
+        AtomicBoolean logged = new AtomicBoolean(false);
+        try {
+            HostSymbols.findAndHookMethod("com.bytedance.crash.jni.NativeBridge", classLoader,
+                    "e", String.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            // NPTH's extra ART dump can deadlock with the system Signal Catcher.
+                            param.setResult(null);
+                            if (logged.compareAndSet(false, true)) {
+                                XposedBridge.log(LOG_PREFIX + "Android 12: skipped concurrent NPTH ART trace dump");
+                            }
+                        }
+                    });
+            XposedBridge.log(LOG_PREFIX + "Android 12 NPTH ART trace compatibility hook installed");
+        } catch (Throwable error) {
+            XposedBridge.log(LOG_PREFIX + "Android 12 NPTH trace compatibility hook unavailable");
             XposedBridge.log(error);
         }
     }
@@ -169,7 +249,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     private static void installSettingsHook() {
         try {
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Application.class,
                     "attach",
                     Context.class,
@@ -191,9 +271,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
             ClassLoader classLoader,
             Object extremelyHigh) {
         try {
-            Class<?> playbackControlClass = XposedHelpers.findClass("ba5.a", classLoader);
+            Class<?> playbackControlClass = HostSymbols.findClass("ba5.a", classLoader);
 
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     playbackControlClass,
                     "a",
                     new XC_MethodHook() {
@@ -203,16 +283,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 return;
                             }
                             try {
-                                Object hostAdapter = XposedHelpers.getObjectField(
+                                Object hostAdapter = HostSymbols.getObjectField(
                                         param.thisObject,
                                         "a");
-                                Object playerController = XposedHelpers.callMethod(
+                                Object playerController = HostSymbols.callMethod(
                                         hostAdapter,
                                         "n");
                                 if (playerController == null) {
                                     return;
                                 }
-                                XposedHelpers.callMethod(
+                                HostSymbols.callMethod(
                                         playerController,
                                         "r",
                                         extremelyHigh);
@@ -236,8 +316,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     private static void installVipExclusiveBadgeHooks(ClassLoader classLoader) {
         try {
-            Class<?> badgeManagerClass = XposedHelpers.findClass("ma4.q3", classLoader);
-            Class<?> videoPayInfoClass = XposedHelpers.findClass(
+            Class<?> badgeManagerClass = HostSymbols.findClass("ma4.q3", classLoader);
+            Class<?> videoPayInfoClass = HostSymbols.findClass(
                     "com.dragon.read.rpc.model.VideoPayInfo",
                     classLoader);
             XC_MethodHook badgeHook = new XC_MethodHook() {
@@ -250,12 +330,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     try {
                         Object payInfo = param.args[0];
-                        boolean isVip = Boolean.TRUE.equals(XposedHelpers.callStaticMethod(
+                        boolean isVip = Boolean.TRUE.equals(HostSymbols.callStaticMethod(
                                 badgeManagerClass,
                                 "k",
                                 payInfo));
                         boolean isLimitedFree = Boolean.TRUE.equals(
-                                XposedHelpers.callStaticMethod(
+                                HostSymbols.callStaticMethod(
                                         badgeManagerClass,
                                         "j",
                                         payInfo));
@@ -277,14 +357,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 }
             };
 
-            for (String methodName : new String[] {"d", "e", "f", "g"}) {
-                XposedHelpers.findAndHookMethod(
+            // The four badge variants share the same replacement callback.
+            String[] badgeMethods = TargetApp.isManju()
+                    ? new String[] {"GQG66Q", "QGQ6Q", "q9Qgq9Qq", "qq"}
+                    : new String[] {"d", "e", "f", "g"};
+            for (String methodName : badgeMethods) {
+                HostSymbols.findAndHookMethod(
                         badgeManagerClass,
                         methodName,
                         videoPayInfoClass,
                         badgeHook);
             }
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     badgeManagerClass,
                     "o",
                     String.class,
@@ -313,11 +397,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return;
         }
         try {
-            boolean isVip = Boolean.TRUE.equals(XposedHelpers.callStaticMethod(
+            boolean isVip = Boolean.TRUE.equals(HostSymbols.callStaticMethod(
                     badgeManagerClass,
                     "k",
                     payInfo));
-            boolean isLimitedFree = Boolean.TRUE.equals(XposedHelpers.callStaticMethod(
+            boolean isLimitedFree = Boolean.TRUE.equals(HostSymbols.callStaticMethod(
                     badgeManagerClass,
                     "j",
                     payInfo));
@@ -377,16 +461,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     private static void installStartupNavigationHooks(ClassLoader classLoader) {
         try {
-            Class<?> mainActivityClass = XposedHelpers.findClass(
+            Class<?> mainActivityClass = HostSymbols.findClass(
                     "com.dragon.read.pages.main.MainFragmentActivity",
                     classLoader);
-            Class<?> tabTypeClass = XposedHelpers.findClass(
+            Class<?> tabTypeClass = HostSymbols.findClass(
                     "com.dragon.read.rpc.model.BottomTabBarItemType",
                     classLoader);
-            Object myProfile = XposedHelpers.getStaticObjectField(tabTypeClass, "MyProfile");
-            Object bookStore = XposedHelpers.getStaticObjectField(tabTypeClass, "BookStore");
+            Object myProfile = HostSymbols.getStaticObjectField(tabTypeClass, "MyProfile");
+            Object bookStore = HostSymbols.getStaticObjectField(tabTypeClass, "BookStore");
+            installSettingsTouchHook(mainActivityClass);
 
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     mainActivityClass,
                     "onCreate",
                     Bundle.class,
@@ -406,7 +491,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                     });
 
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     mainActivityClass,
                     "W1",
                     new XC_MethodHook() {
@@ -426,7 +511,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                     });
 
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     mainActivityClass,
                     "t2",
                     tabTypeClass,
@@ -445,20 +530,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                     });
 
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     mainActivityClass,
                     "onResume",
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Activity activity = (Activity) param.thisObject;
-                            if (embeddedLspatchEnvironment) {
-                                scheduleEmbeddedSettingsEntry(activity, 0);
-                            }
+                            scheduleSettingsEntry(activity, 0);
                             scheduleBottomTabVisibility(activity, 0);
                             if (startupPrimary == SettingsContract.STARTUP_NONE
                                     || !STARTUP_NAVIGATION_PENDING.get()
-                                    || !isLauncherLaunch(activity)) {
+                                    || (!TargetApp.isManju() && !isLauncherLaunch(activity))) {
                                 return;
                             }
                             scheduleStartupNavigation(activity, 0);
@@ -578,7 +661,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
         String settingsSource = hasSnapshot ? "snapshot" : "defaults";
         try (Cursor cursor = context.getContentResolver().query(
-                Uri.parse("content://com.t8numen.hongguocache1080.settings/config"),
+                TargetApp.settingsUri(),
                 projection,
                 null,
                 null,
@@ -696,7 +779,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         + hideEarnTab);
     }
 
-    private static void scheduleEmbeddedSettingsEntry(Activity activity, int attempt) {
+    private static void scheduleSettingsEntry(Activity activity, int attempt) {
         WeakReference<Activity> activityReference = new WeakReference<>(activity);
         new Handler(Looper.getMainLooper()).postDelayed(
                 () -> {
@@ -706,36 +789,27 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             || currentActivity.isDestroyed()) {
                         return;
                     }
-                    if (installEmbeddedSettingsEntry(currentActivity) || attempt >= 12) {
+                    if (installSettingsEntry(currentActivity) || attempt >= 12) {
                         return;
                     }
-                    scheduleEmbeddedSettingsEntry(currentActivity, attempt + 1);
+                    scheduleSettingsEntry(currentActivity, attempt + 1);
                 },
                 attempt == 0 ? 150L : 400L);
     }
 
-    private static boolean installEmbeddedSettingsEntry(Activity activity) {
-        TextView mineTab = findLowestTextView(
-                activity.getWindow().getDecorView(),
-                "我的",
-                null);
-        View settingsEntry = findClickableViewOrSelf(mineTab);
+    private static boolean installSettingsEntry(Activity activity) {
+        View settingsEntry = findMineTabEntry(activity);
         if (settingsEntry == null) {
             return false;
         }
-        synchronized (EMBEDDED_SETTINGS_ENTRY_VIEWS) {
-            if (!EMBEDDED_SETTINGS_ENTRY_VIEWS.add(settingsEntry)) {
-                return true;
-            }
-        }
         settingsEntry.setLongClickable(true);
         settingsEntry.setOnLongClickListener(view -> {
-            showEmbeddedSettingsDialog(activity);
+            openModuleSettings(activity);
             return true;
         });
         boolean showHint;
-        synchronized (EMBEDDED_SETTINGS_HINT_ACTIVITIES) {
-            showHint = EMBEDDED_SETTINGS_HINT_ACTIVITIES.add(activity);
+        synchronized (SETTINGS_HINT_ACTIVITIES) {
+            showHint = SETTINGS_HINT_ACTIVITIES.add(activity);
         }
         if (showHint) {
             Toast.makeText(
@@ -744,8 +818,158 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             Toast.LENGTH_LONG)
                     .show();
         }
-        XposedBridge.log(LOG_PREFIX + "embedded settings entry installed");
+        XposedBridge.log(LOG_PREFIX + "settings entry installed, embedded="
+                + embeddedLspatchEnvironment);
         return true;
+    }
+
+    private static View findMineTabEntry(Activity activity) {
+        View current = findLowestTextView(activity.getWindow().getDecorView(), "我的", null);
+        while (current != null) {
+            ViewParent parent = current.getParent();
+            if (parent instanceof View
+                    && "com.dragon.read.widget.BottomTabBarLayout".equals(
+                            parent.getClass().getName())) {
+                return current;
+            }
+            current = parent instanceof View ? (View) parent : null;
+        }
+        return null;
+    }
+
+    private static void openModuleSettings(Activity activity) {
+        if (activity.isFinishing() || activity.isDestroyed()) {
+            return;
+        }
+        try {
+            if (embeddedLspatchEnvironment) {
+                showEmbeddedSettingsDialog(activity);
+            } else {
+                activity.startActivity(new Intent().setClassName(
+                        MODULE_PACKAGE, MODULE_PACKAGE + ".SettingsActivity")
+                        .putExtra(TargetApp.EXTRA, TargetApp.current())
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP));
+            }
+        } catch (RuntimeException error) {
+            XposedBridge.log(LOG_PREFIX + "module settings launch failed");
+            XposedBridge.log(error);
+            Toast.makeText(activity, "无法打开模块设置，请重开红果后重试", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static void installSettingsTouchHook(Class<?> mainActivityClass) {
+        try {
+            HostSymbols.findAndHookMethod(mainActivityClass, "dispatchTouchEvent", MotionEvent.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            Activity activity = (Activity) param.thisObject;
+                            SettingsGesture gesture = SETTINGS_GESTURES.get(activity);
+                            if (gesture == null) {
+                                gesture = new SettingsGesture(activity);
+                                SETTINGS_GESTURES.put(activity, gesture);
+                            }
+                            if (gesture.onTouch((MotionEvent) param.args[0])) {
+                                param.setResult(true);
+                            }
+                        }
+                    });
+            HostSymbols.findAndHookMethod(mainActivityClass, "onPause", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    SettingsGesture gesture = SETTINGS_GESTURES.remove(param.thisObject);
+                    if (gesture != null) {
+                        gesture.cancel();
+                    }
+                }
+            });
+            XposedBridge.log(LOG_PREFIX + "bottom settings gesture hook installed");
+        } catch (Throwable error) {
+            XposedBridge.log(LOG_PREFIX + "bottom settings gesture hook unavailable");
+            XposedBridge.log(error);
+        }
+    }
+
+    /** Observe the whole tab area before its children; let normal taps reach the app. */
+    private static final class SettingsGesture extends GestureDetector.SimpleOnGestureListener {
+        private final WeakReference<Activity> activityReference;
+        private final GestureDetector detector;
+        private WeakReference<View> entryReference = new WeakReference<>(null);
+        private boolean tracking;
+        private boolean consumed;
+        private boolean dispatchingCancel;
+
+        SettingsGesture(Activity activity) {
+            activityReference = new WeakReference<>(activity);
+            detector = new GestureDetector(activity.getApplicationContext(), this);
+        }
+
+        boolean onTouch(MotionEvent event) {
+            if (dispatchingCancel) {
+                return false;
+            }
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                cancel();
+                Activity activity = activityReference.get();
+                View entry = activity == null ? null : findMineTabEntry(activity);
+                Rect bounds = new Rect();
+                if (entry != null && entry.isShown() && entry.isEnabled()) {
+                    int[] location = new int[2];
+                    entry.getLocationOnScreen(location);
+                    bounds.set(location[0], location[1], location[0] + entry.getWidth(),
+                            location[1] + entry.getHeight());
+                }
+                tracking = bounds.contains((int) event.getRawX(), (int) event.getRawY());
+                entryReference = new WeakReference<>(entry);
+            }
+            if (!tracking) {
+                return false;
+            }
+            boolean wasConsumed = consumed;
+            detector.onTouchEvent(event);
+            boolean handled = wasConsumed || consumed;
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                cancel();
+            }
+            return handled;
+        }
+
+        @Override
+        public boolean onDown(MotionEvent event) {
+            return true;
+        }
+
+        @Override
+        public void onLongPress(MotionEvent event) {
+            Activity activity = activityReference.get();
+            View entry = entryReference.get();
+            if (!tracking || consumed || activity == null || entry == null
+                    || !entry.isShown() || !activity.hasWindowFocus()) {
+                return;
+            }
+            consumed = true;
+            MotionEvent cancel = MotionEvent.obtain(event);
+            cancel.setAction(MotionEvent.ACTION_CANCEL);
+            dispatchingCancel = true;
+            try {
+                activity.dispatchTouchEvent(cancel);
+            } finally {
+                dispatchingCancel = false;
+                cancel.recycle();
+            }
+            openModuleSettings(activity);
+        }
+
+        void cancel() {
+            MotionEvent cancel = MotionEvent.obtain(0L, SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_CANCEL, 0f, 0f, 0);
+            detector.onTouchEvent(cancel);
+            cancel.recycle();
+            tracking = false;
+            consumed = false;
+            entryReference.clear();
+        }
     }
 
     private static void showEmbeddedSettingsDialog(Activity activity) {
@@ -786,7 +1010,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 preferences.getBoolean(
                         SettingsContract.KEY_LOCAL_FAVORITES,
                         SettingsContract.DEFAULT_LOCAL_FAVORITES));
-        Switch homeIdRotationSwitch = addEmbeddedSetting(
+        Switch homeIdRotationSwitch = TargetApp.isManju() ? null : addEmbeddedSetting(
                 content,
                 "空数据时更新 DID/IID",
                 "首页数据为空时生成新请求 ID 并提示；点击重试后使用新 ID。",
@@ -842,11 +1066,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         SettingsContract.KEY_HIDE_EARN_TAB,
                         SettingsContract.DEFAULT_HIDE_EARN_TAB));
         TextView fixedFeatureNote = new TextView(activity);
-        fixedFeatureNote.setText("模块自带短剧切集广告拦截，无需额外开启；强制更新弹窗拦截也固定开启。保存后请完全关闭并重新打开红果。");
+        fixedFeatureNote.setText("模块自带切集广告与游戏推广页拦截、强制更新弹窗拦截，并默认阻止跳转登录页（包括主动点击登录）。保存后请完全关闭并重新打开红果。");
         fixedFeatureNote.setTextSize(13.0f);
         fixedFeatureNote.setAlpha(0.72f);
         fixedFeatureNote.setPadding(0, dp(activity, 8), 0, dp(activity, 8));
         content.addView(fixedFeatureNote);
+        AdDiagnosticUi.addButtons(activity, content);
 
         Runnable updateStartupState = () -> {
             boolean my = startupPrimarySpinner.getSelectedItemPosition()
@@ -886,7 +1111,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     int startupSecondarySetting = startupSecondarySpinner.getSelectedItemPosition();
                     boolean blockHomeVideo = blockHomeVideoSwitch.isChecked();
                     boolean localFavorites = localFavoritesSwitch.isChecked();
-                    boolean homeIdRotation = homeIdRotationSwitch.isChecked();
+                    boolean homeIdRotation = homeIdRotationSwitch != null
+                            && homeIdRotationSwitch.isChecked();
                     boolean onlineHighest = onlineHighestSwitch.isChecked();
                     boolean downloadHighest = downloadHighestSwitch.isChecked();
                     boolean vipExclusiveBadge = vipExclusiveBadgeSwitch.isChecked();
@@ -1078,7 +1304,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
         Uri data = intent.getData();
         if (data != null
-                && "dragon8662".equals(data.getScheme())
+                && TargetApp.launcherScheme().equals(data.getScheme())
                 && "main".equals(data.getHost())) {
             return (intent.getFlags() & Intent.FLAG_ACTIVITY_NEW_TASK) != 0;
         }
@@ -1088,7 +1314,48 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 && (Intent.ACTION_MAIN.equals(intent.getAction()) || intent.getAction() == null);
     }
 
+    private static void installManjuLifecycle(Application app) {
+        app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
+            private boolean main(Activity activity) {
+                return "com.dragon.read.pages.main.MainFragmentActivity".equals(
+                        activity.getClass().getName());
+            }
+
+            @Override
+            public void onActivityCreated(Activity activity, Bundle state) {
+                if (main(activity) && isLauncherLaunch(activity)) {
+                    STARTUP_NAVIGATION_PENDING.set(startupPrimary != SettingsContract.STARTUP_NONE);
+                }
+            }
+
+            @Override
+            public void onActivityResumed(Activity activity) {
+                if (!main(activity)) {
+                    return;
+                }
+                scheduleSettingsEntry(activity, 0);
+                scheduleBottomTabVisibility(activity, 0);
+                if (STARTUP_NAVIGATION_PENDING.get()) {
+                    scheduleStartupNavigation(activity, 0);
+                }
+            }
+
+            @Override public void onActivityStarted(Activity activity) { }
+            @Override public void onActivityPaused(Activity activity) { }
+            @Override public void onActivityStopped(Activity activity) { }
+            @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) { }
+            @Override public void onActivityDestroyed(Activity activity) { }
+        });
+    }
+
     private static void scheduleStartupNavigation(Activity activity, int attempt) {
+        if (TargetApp.isManju() && attempt == 0) {
+            synchronized (STARTUP_NAVIGATION_SCHEDULED) {
+                if (!STARTUP_NAVIGATION_SCHEDULED.add(activity)) {
+                    return;
+                }
+            }
+        }
         WeakReference<Activity> activityReference = new WeakReference<>(activity);
         new Handler(Looper.getMainLooper()).postDelayed(
                 () -> navigateToStartupDestination(activityReference, attempt),
@@ -1101,6 +1368,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         Activity activity = activityReference.get();
         if (activity == null
                 || activity.isFinishing()
+                || activity.isDestroyed()
                 || !STARTUP_NAVIGATION_PENDING.get()) {
             return;
         }
@@ -1127,6 +1395,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
 
         STARTUP_NAVIGATION_PENDING.set(false);
+        STARTUP_NAVIGATION_SCHEDULED.remove(activity);
         EARLY_REDIRECT_ACTIVE.set(false);
         XposedBridge.log(LOG_PREFIX + "startup navigation completed: "
                 + primaryLabel + "/" + startupSecondary);
@@ -1135,6 +1404,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static void retryStartupNavigation(Activity activity, int attempt) {
         if (attempt >= 15) {
             STARTUP_NAVIGATION_PENDING.set(false);
+            STARTUP_NAVIGATION_SCHEDULED.remove(activity);
             EARLY_REDIRECT_ACTIVE.set(false);
             XposedBridge.log(LOG_PREFIX + "startup navigation timed out");
             return;
@@ -1198,18 +1468,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
         return location[1];
     }
 
-    private static View findClickableViewOrSelf(View view) {
-        View current = view;
-        for (int depth = 0; current != null && depth < 6; depth++) {
-            if (current.isClickable() && current.isEnabled()) {
-                return current;
-            }
-            ViewParent parent = current.getParent();
-            current = parent instanceof View ? (View) parent : null;
-        }
-        return view;
-    }
-
     private static boolean isSelected(View view) {
         View current = view;
         for (int depth = 0; current != null && depth < 6; depth++) {
@@ -1236,7 +1494,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     private static void installInjectedUpdateDialogHook() {
         try {
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Dialog.class,
                     "show",
                     new XC_MethodHook() {
@@ -1259,7 +1517,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     private static void installUnsafeVersionToastBlockHook() {
         try {
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     Toast.class,
                     "show",
                     new XC_MethodHook() {
@@ -1285,7 +1543,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static String readToastText(Toast toast) {
         View view = null;
         try {
-            Object value = XposedHelpers.callMethod(toast, "getView");
+            Object value = HostSymbols.callMethod(toast, "getView");
             if (value instanceof View) {
                 view = (View) value;
             }
@@ -1293,8 +1551,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
         if (view == null) {
             try {
-                Object toastPresenter = XposedHelpers.getObjectField(toast, "mTN");
-                Object value = XposedHelpers.getObjectField(toastPresenter, "mNextView");
+                Object toastPresenter = HostSymbols.getObjectField(toast, "mTN");
+                Object value = HostSymbols.getObjectField(toastPresenter, "mNextView");
                 if (value instanceof View) {
                     view = (View) value;
                 }
@@ -1353,7 +1611,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             Class<?> resolutionClass,
             Object extremelyHigh) {
         try {
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     resolutionClass,
                     "toString",
                     resolutionClass,
@@ -1365,7 +1623,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             }
                         }
                     });
-            XposedHelpers.findAndHookMethod(
+            HostSymbols.findAndHookMethod(
                     resolutionClass,
                     "forString",
                     String.class,

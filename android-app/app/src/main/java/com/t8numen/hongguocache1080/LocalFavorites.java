@@ -39,6 +39,7 @@ final class LocalFavorites {
             "com.dragon.read.pages.main.MainFragmentActivity";
     private static final String PLAYER_ACTIVITY =
             "com.dragon.read.component.shortvideo.impl.ShortSeriesActivity";
+    static final String ALBUM_PREFIX = "album:";
     private static final String PREFERENCES_NAME = "hongguo_cache_1080_local_favorites";
     private static final String KEY_ENTRIES = "entries";
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
@@ -66,14 +67,14 @@ final class LocalFavorites {
         }
         targetClassLoader = classLoader;
         try {
-            Class<?> mainClass = XposedHelpers.findClass(MAIN_ACTIVITY, classLoader);
-            XposedHelpers.findAndHookMethod(mainClass, "onResume", new XC_MethodHook() {
+            Class<?> mainClass = HostSymbols.findClass(MAIN_ACTIVITY, classLoader);
+            HostSymbols.findAndHookMethod(mainClass, "onResume", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     scheduleSync((Activity) param.thisObject);
                 }
             });
-            XposedHelpers.findAndHookMethod(mainClass, "onPause", new XC_MethodHook() {
+            HostSymbols.findAndHookMethod(mainClass, "onPause", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     if (overlayActivity.get() == param.thisObject) {
@@ -83,8 +84,13 @@ final class LocalFavorites {
             });
             installCollectClickHook(classLoader, "a");
             installCollectClickHook(classLoader, "b");
-            installCatalogCollectClickHook(classLoader);
-            XposedBridge.hookAllMethods(View.class, "performClick", new XC_MethodHook() {
+            installCatalogCollectClickHook(classLoader,
+                    "com.dragon.read.component.shortvideo.impl.catalog.l3", "c7z", "catalog");
+            if (TargetApp.isManju()) {
+                installCatalogCollectClickHook(classLoader,
+                        "ggqg.q9Qq", "catalog_header_collect", "catalog-header");
+            }
+            HostSymbols.hookAllMethods(View.class, "performClick", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     if (!enabled) {
@@ -105,10 +111,10 @@ final class LocalFavorites {
 
     private static void installCollectClickHook(ClassLoader classLoader, String variant) {
         try {
-            Class<?> collectView = XposedHelpers.findClass(
+            Class<?> collectView = HostSymbols.findClass(
                     "com.dragon.read.component.shortvideo.ssbiz.collect.ui." + variant,
                     classLoader);
-            XposedHelpers.findAndHookMethod(collectView, "b", collectView, new XC_MethodHook() {
+            HostSymbols.findAndHookMethod(collectView, "b", collectView, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     View view = (View) param.args[0];
@@ -123,25 +129,25 @@ final class LocalFavorites {
         }
     }
 
-    private static void installCatalogCollectClickHook(ClassLoader classLoader) {
+    private static void installCatalogCollectClickHook(ClassLoader classLoader,
+            String listenerName, String resource, String source) {
         try {
-            Class<?> clickListener = XposedHelpers.findClass(
-                    "com.dragon.read.component.shortvideo.impl.catalog.l3", classLoader);
-            XposedHelpers.findAndHookMethod(clickListener, "onClick", View.class,
+            Class<?> clickListener = HostSymbols.findClass(listenerName, classLoader);
+            HostSymbols.findAndHookMethod(clickListener, "onClick", View.class,
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
                             View view = (View) param.args[0];
                             int buttonId = view.getResources().getIdentifier(
-                                    "c7z", "id", "com.phoenix.read");
+                                    HostSymbols.resource(resource), "id", TargetApp.current());
                             if (buttonId != 0 && view.getId() == buttonId
-                                    && interceptCollectClick(view, "catalog")) {
+                                    && interceptCollectClick(view, source)) {
                                 param.setResult(null);
                             }
                         }
                     });
         } catch (Throwable error) {
-            XposedBridge.log(LOG_PREFIX + "catalog collect click hook unavailable");
+            XposedBridge.log(LOG_PREFIX + "catalog collect click hook unavailable: " + source);
             XposedBridge.log(error);
         }
     }
@@ -151,7 +157,9 @@ final class LocalFavorites {
             return false;
         }
         Activity activity = findActivity(view.getContext());
-        if (activity == null || !PLAYER_ACTIVITY.equals(activity.getClass().getName())
+        if (activity == null
+                || !(PLAYER_ACTIVITY.equals(activity.getClass().getName())
+                        || MAIN_ACTIVITY.equals(activity.getClass().getName()))
                 || !Boolean.FALSE.equals(isLoggedIn())) {
             return false;
         }
@@ -162,11 +170,11 @@ final class LocalFavorites {
 
     private static Boolean isLoggedIn() {
         try {
-            Class<?> dependClass = XposedHelpers.findClass(
+            Class<?> dependClass = HostSymbols.findClass(
                     "com.dragon.read.NsCommonDepend", targetClassLoader);
-            Object depend = XposedHelpers.getStaticObjectField(dependClass, "IMPL");
-            Object manager = XposedHelpers.callMethod(depend, "acctManager");
-            Object value = XposedHelpers.callMethod(manager, "islogin");
+            Object depend = HostSymbols.getStaticObjectField(dependClass, "IMPL");
+            Object manager = HostSymbols.callMethod(depend, "acctManager");
+            Object value = HostSymbols.callMethod(manager, "islogin");
             return value instanceof Boolean ? (Boolean) value : null;
         } catch (Throwable error) {
             if (LOGIN_ERROR_LOGGED.compareAndSet(false, true)) {
@@ -192,7 +200,7 @@ final class LocalFavorites {
         boolean removed = entries.removeIf(entry -> seriesId.equals(entry.id));
         if (!removed) {
             String title = currentSeries[1].isEmpty() ? "剧集 " + seriesId : currentSeries[1];
-            entries.add(0, new Entry(seriesId, title));
+            entries.add(0, new Entry(seriesId, title, currentSeries.length > 2 ? currentSeries[2] : ""));
         }
         if (writeEntries(activity, entries)) {
             Toast.makeText(activity,
@@ -318,7 +326,7 @@ final class LocalFavorites {
             }
         });
         list.setOnItemClickListener((parent, view, position, id) ->
-                openSeries(activity, entries.get(position).id));
+                openSeries(activity, entries.get(position)));
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             Entry entry = entries.get(position);
             new AlertDialog.Builder(activity)
@@ -341,27 +349,34 @@ final class LocalFavorites {
         return content;
     }
 
-    private static void openSeries(Activity activity, String seriesId) {
+    private static void openSeries(Activity activity, Entry entry) {
         try {
-            Class<?> argsClass = XposedHelpers.findClass(
+            Class<?> argsClass = HostSymbols.findClass(
                     "com.dragon.read.component.shortvideo.api.model.ShortSeriesLaunchArgs",
                     targetClassLoader);
             Object args = XposedHelpers.newInstance(argsClass);
-            XposedHelpers.callMethod(args, "d", activity);
-            XposedHelpers.callMethod(args, "n", seriesId);
-            Class<?> apiClass = XposedHelpers.findClass(
+            HostSymbols.callMethod(args, "d", activity);
+            if (entry.id.startsWith(ALBUM_PREFIX)) {
+                HostSymbols.callMethod(args, "b", entry.id.substring(ALBUM_PREFIX.length()));
+                if (!entry.videoId.isEmpty()) {
+                    HostSymbols.callMethod(args, "c", entry.videoId);
+                }
+            } else {
+                HostSymbols.callMethod(args, "n", entry.id);
+            }
+            Class<?> apiClass = HostSymbols.findClass(
                     "com.dragon.read.component.shortvideo.api.ShortSeriesApi",
                     targetClassLoader);
-            Class<?> serviceManager = XposedHelpers.findClass(
+            Class<?> serviceManager = HostSymbols.findClass(
                     "com.bytedance.news.common.service.manager.ServiceManager",
                     targetClassLoader);
-            Object api = XposedHelpers.callStaticMethod(serviceManager, "getService", apiClass);
+            Object api = HostSymbols.callStaticMethod(serviceManager, "getService", apiClass);
             if (api == null) {
                 throw new IllegalStateException("ShortSeriesApi unavailable");
             }
-            XposedHelpers.callMethod(api, "openShortSeriesActivity", args);
+            HostSymbols.callMethod(api, "openShortSeriesActivity", args);
         } catch (Throwable error) {
-            XposedBridge.log(LOG_PREFIX + "open local favorite failed: " + seriesId);
+            XposedBridge.log(LOG_PREFIX + "open local favorite failed: " + entry.id);
             XposedBridge.log(error);
             Toast.makeText(activity, "打开剧集失败，请稍后重试", Toast.LENGTH_SHORT).show();
         }
@@ -379,7 +394,8 @@ final class LocalFavorites {
                 }
                 String id = item.optString("id", "");
                 if (!id.isEmpty()) {
-                    entries.add(new Entry(id, item.optString("title", "剧集 " + id)));
+                    entries.add(new Entry(id, item.optString("title", "剧集 " + id),
+                            item.optString("videoId", "")));
                 }
             }
             return entries;
@@ -397,6 +413,9 @@ final class LocalFavorites {
                 JSONObject item = new JSONObject();
                 item.put("id", entry.id);
                 item.put("title", entry.title);
+                if (!entry.videoId.isEmpty()) {
+                    item.put("videoId", entry.videoId);
+                }
                 array.put(item);
             }
             preferences(context).edit().putString(KEY_ENTRIES, array.toString()).apply();
@@ -478,10 +497,12 @@ final class LocalFavorites {
     private static final class Entry {
         final String id;
         final String title;
+        final String videoId;
 
-        Entry(String id, String title) {
+        Entry(String id, String title, String videoId) {
             this.id = id;
             this.title = title;
+            this.videoId = videoId;
         }
     }
 }

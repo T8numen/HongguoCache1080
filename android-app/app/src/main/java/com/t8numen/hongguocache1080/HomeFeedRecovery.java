@@ -102,6 +102,10 @@ final class HomeFeedRecovery {
     }
 
     static void configure(Context context, boolean isEnabled) {
+        if (TargetApp.isManju()) {
+            enabled = false;
+            return;
+        }
         try {
             Context applicationContext = context.getApplicationContext();
             appContext = applicationContext != null ? applicationContext : context;

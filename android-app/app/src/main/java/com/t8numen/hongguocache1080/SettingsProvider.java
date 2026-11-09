@@ -11,8 +11,6 @@ import android.os.Binder;
 import android.os.Process;
 
 public final class SettingsProvider extends ContentProvider {
-    private static final String TARGET_PACKAGE = "com.phoenix.read";
-    private SharedPreferences preferences;
 
     @Override
     public boolean onCreate() {
@@ -20,7 +18,6 @@ public final class SettingsProvider extends ContentProvider {
         if (context == null) {
             return false;
         }
-        preferences = context.getSharedPreferences(SettingsContract.PREFERENCES_NAME, 0);
         return true;
     }
 
@@ -31,7 +28,8 @@ public final class SettingsProvider extends ContentProvider {
             String selection,
             String[] selectionArgs,
             String sortOrder) {
-        enforceAllowedCaller();
+        String host = enforceAllowedCaller(uri);
+        SharedPreferences preferences = TargetApp.preferences(getContext(), host);
         String[] columns = projection == null
                 ? new String[] {
                         SettingsContract.KEY_DIRECT_FAVORITES,
@@ -127,22 +125,26 @@ public final class SettingsProvider extends ContentProvider {
         throw new UnsupportedOperationException("Settings provider is read-only");
     }
 
-    private void enforceAllowedCaller() {
+    private String enforceAllowedCaller(Uri uri) {
+        String requested = uri.getQueryParameter("host");
+        String host = requested == null ? TargetApp.SHORT : requested;
+        if (!TargetApp.supported(host)) {
+            throw new SecurityException("Unsupported settings host");
+        }
         int callingUid = Binder.getCallingUid();
         if (callingUid == Process.myUid()) {
-            return;
+            return host;
         }
         Context context = getContext();
-        String[] packages = context == null
-                ? null
+        String[] packages = context == null ? null
                 : context.getPackageManager().getPackagesForUid(callingUid);
         if (packages != null) {
             for (String packageName : packages) {
-                if (TARGET_PACKAGE.equals(packageName)) {
-                    return;
+                if (host.equals(packageName)) {
+                    return host;
                 }
             }
         }
-        throw new SecurityException("Caller is not allowed to read module settings");
+        throw new SecurityException("Caller cannot read this host's settings");
     }
 }

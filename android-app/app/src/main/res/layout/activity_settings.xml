@@ -7,6 +7,7 @@
     android:fitsSystemWindows="true">
 
     <LinearLayout
+        android:id="@+id/settings_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -249,6 +250,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="28dp"
             android:layout_marginBottom="10dp"
+            android:id="@+id/home_recovery_heading"
             android:text="@string/home_recovery_title"
             android:textColor="@color/settings_accent"
             android:textSize="14sp"

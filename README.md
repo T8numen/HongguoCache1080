@@ -1,6 +1,6 @@
 # 红果视频增强模块（HongguoCache1080）
 
-适配红果短剧 `com.phoenix.read` 7.3.9.32 的 LSPosed 模块，使用官方 LSPosed 1.9.2 兼容的 legacy XposedBridge API。当前模块版本为 **1.8.7**。
+适配红果短剧 `com.phoenix.read` 7.3.9.32 和红果漫剧 `com.kylin.read` 7.4.1.32 的 LSPosed 模块，使用兼容官方 LSPosed 1.9.2 的 legacy XposedBridge API。当前公开模块版本为 **1.9.3**。
 
 本模块在 Codex 中使用 **GPT-6 Sol（极高思考程度）**辅助开发。
 
@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | <img src="media/settings-overview.png" width="240" alt="启动位置、本地收藏和首页恢复设置"> | <img src="media/settings-quality.png" width="240" alt="画质、VIP 角标、底栏与广告说明"> | <img src="media/playback-settings.png" width="240" alt="片头片尾、音量、亮度、清屏和评论设置"> |
 
-Root 模块从桌面打开「红果增强模块」设置。播放页长按「分享」打开播放设置；普通点击仍由红果原版处理。修改设置后，完全关闭并重新打开红果以读取新配置。
+从桌面打开「红果增强模块」，或在红果长按「我的」进入独立模块设置。顶部可选择短剧或漫剧，两者分别保存设置。播放页长按「分享」打开播放设置；普通点击仍由红果原版处理。修改设置后，完全关闭并重新打开红果以读取新配置。
 
 ## 功能说明
 
@@ -28,7 +28,7 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 ### 启动、首页与收藏
 
 - **两级启动位置**：一级可选「不跳转 / 我的 / 剧场」，默认不跳转。选「我的」后，二级可选「仅我的 / 收藏 / 点赞 / 历史」；也可启用「阻止首页首视频加载」，避免初始视频写入历史。选择「剧场」时会保留剧场底栏入口。
-- **首页空数据时更新 DID/IID**：默认开启。确认首页主响应的 `data` 为空后，生成随机 16 位请求 ID，并仅替换后续 `/bookmall/tab/` 请求 URL 中的 `device_id` 和 `iid`；不清除登录态、历史、本地收藏或 SDK 已注册身份。提示后需要点击重试；一分钟内重复空响应不会连续轮换。这是请求参数恢复尝试，不能保证创建新游客或长期解决首页异常。
+- **短剧首页空数据时更新 DID/IID**：默认开启。确认首页主响应的 `data` 为空后，生成随机 16 位请求 ID，并仅替换后续 `/bookmall/tab/` 请求 URL 中的 `device_id` 和 `iid`；不清除登录态、历史、本地收藏或 SDK 已注册身份。提示后需要点击重试；一分钟内重复空响应不会连续轮换。这是请求参数恢复尝试，不能保证创建新游客或长期解决首页异常。
 - **未登录本地收藏**：默认关闭。开启且红果明确判定未登录时，播放页星标、选集收藏及「我的→收藏」使用本机列表；可打开剧集或长按列表项移除。登录后沿用红果原版收藏。关闭开关保留本地记录，但清除红果应用数据会删除它们；记录不与账号同步。模块不接管点赞。
 
 ### 播放体验
@@ -40,17 +40,21 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 
 ### 界面与广告
 
+- **广告诊断**：记录候选、实际展示及拦截，可人工标记并导出 ZIP。
+- **实验开关**：可分别启用提前配置、精确广告位、疑似暂停、游戏、直播、未知切集页及本地短剧免广告权益。七项默认关闭。本地权益实验仅影响客户端判断。
+- **游客导航**：拦截已识别的登录页，包括主动点击登录后触发的页面。
+
 - **VIP 标识**：可把普通 VIP 短剧卡片的角标显示为「VIP专享」，进入 VIP 剧时提示一次剧类型；限时免费角标保持原样。同一部剧换集不重复提示。
 - **底栏精简**：可分别隐藏「剧场」「商城」「赚钱」入口，三个开关独立，默认关闭。
 - **切集广告**：对已分析版本的竖屏短剧与横版短剧 OneStop 广告页插入点直接跳过广告项，不修改下一集数据；广告请求仍可能发生，其他广告路径和实际横屏换集效果尚未完整实测。
 - **特定二改版提示拦截**：按文本特征关闭注入的强制更新弹窗，并阻止完整匹配的“不安全”Toast；不处理普通登录、隐私或下载确认提示。
 
-功能依赖红果短剧 7.3.9.32 的具体类和方法。红果更新后，部分 Hook 可能失效；横屏换集广告、其他红果版本和 Android 版本仍需分别实测。首页空数据时更新 DID/IID 不能保证长期恢复首页服务。
+功能依赖上述两个宿主版本的具体类和方法。红果更新后，部分 Hook 可能失效；横屏换集广告、其他红果版本和 Android 版本仍需分别实测。首页空数据时更新 DID/IID 不能保证长期恢复首页服务。
 
 ## 安装
 
-1. 从 [v1.8.7 Release](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 下载独立模块 APK，并安装红果短剧 7.3.9.32。
-2. 在 LSPosed Manager 中启用模块，作用域只选择 `com.phoenix.read`。
+1. 从 [v1.9.3 Release](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.9.3) 下载独立模块 APK，并安装上方列出的宿主版本。
+2. 在 LSPosed Manager 中启用模块，按需选择 `com.phoenix.read` 或 `com.kylin.read`。
 3. 完全关闭并重新打开红果。桌面上的「红果增强模块」可调整启动页面、本地收藏等设置；在播放页长按「分享」可打开播放设置。
 
 ## 构建
@@ -67,10 +71,19 @@ Root 模块从桌面打开「红果增强模块」设置。播放页长按「分
 
 ## 版本与更新记录
 
-当前源码对应 **v1.8.7**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) 与[历史版本列表](https://github.com/T8numen/HongguoCache1080/releases)分别放在各版本的 GitHub Release。每版有独立更新说明；v1.3.1 未保留 APK，其他历史版本各有一个 APK。旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
+当前源码对应 **v1.9.3**。[当前模块 APK](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.9.3) 与[历史版本列表](https://github.com/T8numen/HongguoCache1080/releases)分别放在各版本的 GitHub Release。每版有独立更新说明；v1.3.1 未保留 APK，其他历史版本各有一个 APK。旧版 APK 是历史构建存档，仓库源码不对应旧版构建。文件名带 `debug`，表示这些 APK 来自 Gradle 的 debug 构建。
 
 | 版本 | 主要变更 |
 | --- | --- |
+| [1.9.3](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.9.3) | 新增提前配置拦截、精确广告位拦截和本地短剧免广告权益实验，全部默认关闭。权益实验仅影响客户端判断。主要实机验收针对内嵌运行；K50 首页卡死的加载器修补属于免 Root 封装。 |
+| [1.9.2](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.9.2) | 共享模块代码增加免 Root 集成环境的「长按我的／长按分享」广告开关即时同步。此 Release 提供独立模块组件；双入口同步的原验收针对免 Root 集成环境。 |
+| [1.9.1](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.9.1) | 新增疑似暂停、游戏、直播和未知切集页四个独立开关，默认关闭。保护普通剧集包装模型及列表顺序。 |
+| [1.9.0](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.9.0) | 适配红果漫剧 7.4.1.32，短剧和漫剧分别保存设置。漫剧支持默认最高画质、播放增强、本地收藏和广告诊断。此处发布最终 code42。 |
+| [1.8.12](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.12) | 新增广告诊断，区分候选、已拦截与实际展示，支持人工标记及 ZIP 导出。此处发布最终 r4。 |
+| [1.8.11](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.11) | 拦截已识别的登录页跳转，游客可打开「我的」。主动点击登录也受这条规则影响。 |
+| [1.8.10](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.10) | 本地收藏支持 UGC 合集，修复已开启本地收藏时，游客从「我的 → 收藏」被原生登录页抢先接管。 |
+| [1.8.9](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.9) | 本地收藏覆盖首页内播放，改善「我的」长按识别；新增剧末和单列小游戏推广卡过滤。 |
+| [1.8.8](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.8) | 独立模块支持在红果短剧长按底栏「我的」进入设置。 |
 | [1.8.7](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.7) | 启动位置改为两级选择，可进入我的、剧场以及收藏、点赞、历史；本地收藏增加默认关闭的开关。 |
 | [1.8.6](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.6) | 首页主响应为空时可更新请求用 DID/IID；该功能默认开启，启动直达默认关闭。 |
 | [1.8.5](https://github.com/T8numen/HongguoCache1080/releases/tag/v1.8.5) | 增加横版短剧 OneStop 广告页插入拦截，并在设置页说明广告拦截。 |

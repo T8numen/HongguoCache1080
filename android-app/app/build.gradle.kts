@@ -10,8 +10,12 @@ android {
         applicationId = "com.t8numen.hongguocache1080"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "1.8.7"
+        versionCode = 47
+        versionName = "1.9.3"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
